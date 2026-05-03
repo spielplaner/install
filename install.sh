@@ -172,6 +172,17 @@ set -a; . ./.env; set +a
 # "Bind mount failed: ... does not exist", wenn der Hostpfad fehlt).
 mkdir -p "${DATA_ROOT}/db" "${DATA_ROOT}/uploads" "${DATA_ROOT}/logs/api"
 [[ "${TLS_MODE:-extern}" == "traefik" ]] && mkdir -p "${DATA_ROOT}/traefik/letsencrypt"
+# Synology-btrfs (und manche andere Filesysteme) erben restriktive ACLs vom
+# Parent. Container-User (mysql=999, redis=999, node=1000) muss das Verzeichnis
+# lesen + traversieren koennen — chmod 755 ist hier sicher, weil die Pfade
+# nichts Sensibles enthalten ausser dem DB-Volume (das MariaDB selber chownen
+# wird auf seinen User).
+chmod 755 "${DATA_ROOT}" "${DATA_ROOT}/db" "${DATA_ROOT}/uploads" "${DATA_ROOT}/logs" "${DATA_ROOT}/logs/api" 2>/dev/null || true
+# DB-Init-Scripts (falls vorhanden) muessen vom mysql-User gelesen werden.
+if [[ -d docker/db-init ]]; then
+  chmod 755 docker docker/db-init
+  find docker/db-init -type f -exec chmod 644 {} \;
+fi
 
 # ─────────────────────────────────────────────────────────────────────
 # 2) Profile zusammenbauen
@@ -200,14 +211,19 @@ echo "==> Images bauen"
 echo "==> DB + Redis starten"
 "${COMPOSE[@]}" up -d db redis
 
-echo "==> Auf DB warten"
-for i in {1..60}; do
+echo "==> Auf DB warten (max ca. 5 Min — auf langsamen Filesystemen wie"
+echo "    Synology-Btrfs dauert MariaDB-Erstinit oft ~3 Min)"
+for i in {1..150}; do
   if "${COMPOSE[@]}" exec -T db mariadb-admin ping -uroot -p"$MYSQL_ROOT_PASSWORD" --silent 2>/dev/null; then
-    echo "   DB bereit."
+    echo "   DB bereit nach ${i}x2s."
     break
   fi
   sleep 2
-  [[ $i -eq 60 ]] && { echo "DB-Start fehlgeschlagen."; exit 1; }
+  [[ $i -eq 150 ]] && {
+    echo "DB-Start fehlgeschlagen — letzte Logs:"
+    "${COMPOSE[@]}" logs db --tail=40
+    exit 1
+  }
 done
 
 echo "==> API starten"
