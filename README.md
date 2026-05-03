@@ -87,8 +87,8 @@ Bug-Reports und Verbesserungen bitte am Source-Repo.
 **PolyForm Noncommercial License 1.0.0** — siehe [LICENSE](LICENSE).
 
 Kurz:
-- ✅ Erlaubt fuer Theater (gemeinnuetzig oder eigenbetrieblich), Schulen,
-  Bildungseinrichtungen, Forschung, Privatpersonen, oeffentliche Stellen
+- ✅ Erlaubt für Theater (gemeinnuetzig), Schulen,
+  Bildungseinrichtungen, Forschung, Privatpersonen
 - ❌ **Nicht erlaubt** ohne separate Lizenz: Verkauf, kostenpflichtige
   SaaS-Angebote, Integration in kommerzielle Produkte, Vermietung
 - 📩 Kommerzielle Lizenz auf Anfrage: **hallo@feinfein.de**
