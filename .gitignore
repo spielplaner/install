@@ -1,0 +1,20 @@
+# Env (generierte echte Konfig)
+.env
+.env.local
+!.env.example
+
+# Docker volumes / runtime data
+data/
+db-data/
+redis-data/
+uploads/
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Synology
+@eaDir/
+.smbdelete*

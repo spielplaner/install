@@ -1,0 +1,25 @@
+{
+  "_copyright": "© Frank-Christian Struve 2026 · Version 26 rev 0.1",
+  "genres": [
+    "Rock", "Pop", "Jazz", "Blues", "Klassik", "Folk",
+    "Country", "Metal", "Elektro", "HipHop",
+    "Theater", "Kabarett", "Lesung", "Kindertheater",
+    "Chanson", "Weltmusik", "Improtheater", "Varieté",
+    "Figurentheater", "sonstige"
+  ],
+  "event_types": [
+    {"name": "Konzert",        "color": "#D14B3B", "sort_order": 10},
+    {"name": "Theater",        "color": "#C9A15B", "sort_order": 20},
+    {"name": "Kabarett",       "color": "#8E8E93", "sort_order": 30},
+    {"name": "Lesung",         "color": "#007AFF", "sort_order": 40},
+    {"name": "Kinder",         "color": "#34C759", "sort_order": 50},
+    {"name": "Probe",          "color": "#FFCC00", "sort_order": 60},
+    {"name": "Workshop",       "color": "#5856D6", "sort_order": 70},
+    {"name": "Privatvermietung","color": "#AF52DE", "sort_order": 80},
+    {"name": "Empfang",        "color": "#FF9500", "sort_order": 90},
+    {"name": "Sonstiges",      "color": "#5E5CE6", "sort_order": 100}
+  ],
+  "accommodation_types": [
+    "Hotel", "Pension", "Privat", "im Theater", "keine"
+  ]
+}

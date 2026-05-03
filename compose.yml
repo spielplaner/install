@@ -1,0 +1,222 @@
+# © Frank-Christian Struve 2026 · Version 26 R3
+# SpielPlaner — End-User-Compose (GENERATED, do not edit manually).
+# Source: spielplaner/infra/compose.yml + scripts/generate-installer.sh
+# ADR:    docs/adr/0002-ghcr-ci-und-end-user-installer.md
+#
+# Image-Tag wird ueber .env gesetzt: IMAGE_TAG=v0.1.0 (oder latest)
+
+# © Frank-Christian Struve 2026 · Version 26 rev 0.1
+# SpielPlaner — Docker-Compose für Development & Synology-Deployment
+
+name: spielplaner
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MYSQL_DATABASE}
+      MARIADB_USER: ${MYSQL_USER}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ:-Europe/Berlin}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --innodb-file-per-table=1
+      - --default-authentication-plugin=mysql_native_password
+    volumes:
+      # Sprint 31 Follow-up: DB-Daten muessen auf lokalem POSIX-Filesystem
+      # liegen (SMB/Synology-Mount laeuft in Tombstone-Race mit dem
+      # chown des MariaDB-Entrypoints). DB_DATA_ROOT ist in .env gesetzt.
+      # Fuer den Umzug auf Synology: dort `DB_DATA_ROOT=./data/db`, dann
+      # greift der lokale Synology-Pfad wieder.
+      - ${DB_DATA_ROOT:-${DATA_ROOT:-./data}/db}:/var/lib/mysql
+      - ./docker/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [backend]
+
+  # Sprint G (2026-05-02, vollstaendig 2026-05-02 abend): Gotenberg ist
+  # abgeschaltet und entfernt. HTML→PDF macht WeasyPrint inhouse im
+  # API-Container; DOCX→PDF wandert zur schlanken loffice-Sidecar.
+  loffice:
+    image: ghcr.io/spielplaner/spielplaner-loffice:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:2004/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks: [backend]
+
+  api:
+    image: ghcr.io/spielplaner/spielplaner-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: ${TZ:-Europe/Berlin}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-14}
+      ARGON2_MIN_PASSWORD_LEN: ${ARGON2_MIN_PASSWORD_LEN:-12}
+      LOCKOUT_THRESHOLD: ${LOCKOUT_THRESHOLD:-5}
+      LOCKOUT_WINDOW_MIN: ${LOCKOUT_WINDOW_MIN:-15}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      LIBREOFFICE_URL: ${LIBREOFFICE_URL:-http://loffice:2004}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+    volumes:
+      - ${DATA_ROOT:-./data}/uploads:/app/uploads
+      - ${DATA_ROOT:-./data}/logs/api:/app/logs
+      - ./db/seeds:/srv/seeds:ro
+    ports:
+      - "8000:8000"
+    # Traefik-Labels werden nur aktiv, wenn Profile `traefik` laeuft.
+    # TRAEFIK_DOMAIN_API z.B. "api.spielplaner.theater.de"
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-false}
+      - traefik.http.routers.api.rule=Host(`${TRAEFIK_DOMAIN_API:-api.localhost}`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls.certresolver=le
+      - traefik.http.services.api.loadbalancer.server.port=8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [backend, frontend]
+
+  web:
+    image: ghcr.io/spielplaner/spielplaner-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-Europe/Berlin}
+      PUBLIC_API_BASE_URL: ${PUBLIC_BASE_URL}/api/v1
+      ORIGIN: ${PUBLIC_BASE_URL}
+      API_INTERNAL_URL: ${API_BASE_URL:-http://api:8000}
+    ports:
+      - "3000:3000"
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-false}
+      - traefik.http.routers.web.rule=Host(`${TRAEFIK_DOMAIN_WEB:-app.localhost}`)
+      - traefik.http.routers.web.entrypoints=websecure
+      - traefik.http.routers.web.tls.certresolver=le
+      - traefik.http.services.web.loadbalancer.server.port=3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [frontend]
+
+  # ─────────────────────────────────────────────────────────────────────
+  # WebPlaner — oeffentliche Theater-Website (SvelteKit)
+  # Aktivierung via:  docker compose --profile webplaner up -d
+  # Source-Repo:      ../../webplaner (Geschwister von spielplaner/)
+  # Standalone-Dev:   im webplaner/-Repo direkt `npm run dev` (Port 3001)
+  # ADR:              docs/adr/0001-installer-architektur.md
+  # ─────────────────────────────────────────────────────────────────────
+  webplaner:
+    profiles: ["webplaner"]
+    image: ghcr.io/spielplaner/webplaner:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      TZ: ${TZ:-Europe/Berlin}
+      PUBLIC_TENANT_SLUG: ${PUBLIC_TENANT_SLUG:-insel}
+      # PUBLIC_API_BASE OHNE /api/v1 — der publicApi-Client prefixt /public/...
+      PUBLIC_API_BASE: ${WEBPLANER_API_BASE:-http://api:8000}
+      PUBLIC_DEV_BANNER: ${WEBPLANER_DEV_BANNER:-0}
+      ORIGIN: ${WEBPLANER_PUBLIC_URL:-http://localhost:3001}
+    ports:
+      - "3001:3001"
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-false}
+      - traefik.http.routers.webplaner.rule=Host(`${TRAEFIK_DOMAIN_WEBPLANER:-www.localhost}`)
+      - traefik.http.routers.webplaner.entrypoints=websecure
+      - traefik.http.routers.webplaner.tls.certresolver=le
+      - traefik.http.services.webplaner.loadbalancer.server.port=3001
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [frontend]
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Traefik — optionaler Reverse-Proxy mit Lets-Encrypt (Sidecar)
+  # Aktivierung via:  docker compose --profile traefik up -d
+  # Voraussetzungen in .env:
+  #   TLS_MODE=traefik
+  #   TRAEFIK_DOMAIN_API / TRAEFIK_DOMAIN_WEB / TRAEFIK_DOMAIN_WEBPLANER
+  #   TRAEFIK_LE_EMAIL
+  # Konfig:           infra/traefik/traefik.yml
+  # ─────────────────────────────────────────────────────────────────────
+  traefik:
+    profiles: ["traefik"]
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${TRAEFIK_LE_EMAIL:-admin@example.com}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${DATA_ROOT:-./data}/traefik/letsencrypt:/letsencrypt
+    networks: [frontend]
+
+networks:
+  backend:
+  frontend:
+
+volumes:
+  redis_data:
