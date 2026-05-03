@@ -168,6 +168,11 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
+# Bind-Mount-Verzeichnisse anlegen (Docker bricht sonst mit
+# "Bind mount failed: ... does not exist", wenn der Hostpfad fehlt).
+mkdir -p "${DATA_ROOT}/db" "${DATA_ROOT}/uploads" "${DATA_ROOT}/logs/api"
+[[ "${TLS_MODE:-extern}" == "traefik" ]] && mkdir -p "${DATA_ROOT}/traefik/letsencrypt"
+
 # ─────────────────────────────────────────────────────────────────────
 # 2) Profile zusammenbauen
 # ─────────────────────────────────────────────────────────────────────
