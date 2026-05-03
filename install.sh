@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # © Frank-Christian Struve 2026 · Version 26 R3
-# SpielPlaner · Erstinstallation (Dev-Pfad, lokaler Build)
+# SpielPlaner · Erstinstallation (End-User, GHCR-Pull)
+# GENERATED — bitte Aenderungen am Source-install.sh in spielplaner/spielplaner machen.
 #
 # Ablauf:
 #   1) Wenn keine .env existiert: interaktive Tech-Prompts (DB-Pass, JWT,
@@ -14,7 +15,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 # ─────────────────────────────────────────────────────────────────────
