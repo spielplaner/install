@@ -38,14 +38,35 @@ echo $GHCR_PAT | docker login ghcr.io -u <dein-github-user> --password-stdin
 
 `install.sh` fragt beim ersten Lauf interaktiv ab:
 - Wo Daten liegen sollen (`DATA_ROOT`)
-- Tenant-Slug (Default `insel`)
+- Tenant-Slug (Default `feinfein`)
 - TLS-Modus: `extern` (Synology/Reverse-Proxy) oder `traefik` (Sidecar mit Lets-Encrypt)
+- Public-URL der Suite, OIDC-Issuer, Admin-Email, SMTP-From-Adresse
 - WebPlaner mit-installieren: ja/nein
 
 Datenbank-Passwoerter, JWT-Secret und Cron-Token werden automatisch
 generiert. Nach dem Start: Browser auf `http://<host>:3000/setup` —
 dort werden Theatername, Admin-Account, Firmendaten und (optional)
 SMTP konfiguriert.
+
+### Hinweise pro Plattform
+
+**Linux (Debian, Ubuntu, …):** Nutzer in die `docker`-Gruppe aufnehmen
+(`sudo usermod -aG docker $USER`, dann ausloggen + neu einloggen) —
+danach laufen die docker-Befehle ohne sudo.
+
+**Synology DSM (Container Manager):** Es gibt keine `docker`-Gruppe;
+docker-Befehle brauchen root. Den Installer entsprechend mit `sudo`
+starten. Fuer wiederholtes Debugging optional NOPASSWD setzen:
+
+```sh
+sudo -i
+echo 'YOURUSER ALL=(ALL) NOPASSWD: /usr/local/bin/docker' > /etc/sudoers.d/docker-nopasswd
+chmod 440 /etc/sudoers.d/docker-nopasswd
+exit
+```
+
+**macOS (Docker Desktop):** docker laeuft als Desktop-App, kein sudo.
+Installer wie auf Linux ohne sudo starten.
 
 ## Was hier liegt
 
