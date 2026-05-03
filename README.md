@@ -12,6 +12,11 @@ fuer den Image-Pull braucht es einen Personal Access Token (PAT) mit
 `read:packages`-Scope. Den PAT bekommst du nach Lizenz-Vereinbarung
 direkt vom Lizenzgeber.
 
+> 📖 **Erstinstallation? Bitte vorher [ONBOARDING.md](ONBOARDING.md) lesen** —
+> dort steht der komplette Pfad von Lizenz-Anfrage über Token-Erhalt
+> bis zum laufenden Stack (mit plattform-spezifischen Hinweisen für
+> Synology DSM, Linux und macOS).
+
 ## Voraussetzungen
 
 | Komponente | Mindestversion |
