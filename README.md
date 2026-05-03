@@ -4,9 +4,7 @@
 > Lizenz: **PolyForm Noncommercial 1.0.0** — siehe [LICENSE](LICENSE).
 > **Kommerzielle Nutzung erfordert eine separate Lizenz** (Kontakt: hallo@feinfein.de).
 
-Plug-and-Play-Installation der **SpielPlaner-Suite** (Spiel-, Karten-,
-Kuechen-, BuehnenPlaner) plus optional **WebPlaner** (oeffentliche
-Theater-Website).
+Plug-and-Play-Installation des **SpielPlaner** plus optional **WebPlaner**.
 
 Lokales Deployment, keine Cloud, keine externen Logins. Container-Images
 liegen in einer **privaten** [GitHub Container Registry](https://ghcr.io/spielplaner) —

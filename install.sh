@@ -96,7 +96,7 @@ if [[ ! -f .env ]]; then
 
   # --- Tech-Prompts ---
   prompt        DATA_ROOT          "Wo sollen Daten liegen (Hostpfad)" "./data"
-  prompt        PUBLIC_TENANT_SLUG "Tenant-Slug fuer dieses Theater"   "insel"
+  prompt        PUBLIC_TENANT_SLUG "Tenant-Slug fuer dieses Theater"   "feinfein"
   prompt_choice TLS_MODE           "TLS-Terminierung"                  "extern" "extern|traefik"
 
   TRAEFIK_DOMAIN_API=""
@@ -108,9 +108,23 @@ if [[ ! -f .env ]]; then
     prompt TRAEFIK_DOMAIN_WEB       "Domain fuer Suite-UI"          "app.spielplaner.example"
     prompt TRAEFIK_DOMAIN_WEBPLANER "Domain fuer oeffentliche Site" "www.example.com"
     prompt TRAEFIK_LE_EMAIL         "Mail fuer Lets-Encrypt"        ""
+    # Bei Traefik wird PUBLIC_BASE_URL/OIDC_ISSUER aus den Domains abgeleitet —
+    # der User hat sie also schon implizit oben angegeben.
+    PUBLIC_BASE_URL="https://${TRAEFIK_DOMAIN_WEB}"
+    OIDC_ISSUER="https://${TRAEFIK_DOMAIN_WEB}"
+  else
+    prompt PUBLIC_BASE_URL "Oeffentliche URL der Suite (HTTPS, ohne abschliessenden /)" "https://spielplaner.example"
+    prompt OIDC_ISSUER     "OIDC-Issuer-URL (meist identisch mit PUBLIC_BASE_URL)"      "$PUBLIC_BASE_URL"
   fi
 
   prompt_choice ENABLE_WEBPLANER "WebPlaner (oeff. Theater-Website) mit installieren" "0" "0|1"
+
+  # --- Identitaets-/Mail-Prompts ---
+  # Diese Werte werden vom Setup-Wizard und vom Mail-Versand genutzt.
+  # Username/Passwort des Admins setzt der Wizard separat — hier nur Email,
+  # damit Welcome-/Reset-Mails einen Empfaenger haben.
+  prompt BOOTSTRAP_ADMIN_EMAIL "Admin-Email (fuer Welcome- und Passwort-Reset-Mails)" "admin@example.com"
+  prompt SMTP_FROM             "Absender-Adresse fuer ausgehende Mails (From-Header)" "no-reply@example.com"
 
   echo
   echo "  -> Generiere Zufalls-Secrets (DB-Passwoerter, JWT, Cron-Token) ..."
@@ -132,6 +146,10 @@ if [[ ! -f .env ]]; then
   write_env PUBLIC_TENANT_SLUG    "$PUBLIC_TENANT_SLUG"
   write_env ENABLE_WEBPLANER      "$ENABLE_WEBPLANER"
   write_env TLS_MODE              "$TLS_MODE"
+  write_env PUBLIC_BASE_URL       "$PUBLIC_BASE_URL"
+  write_env OIDC_ISSUER           "$OIDC_ISSUER"
+  write_env BOOTSTRAP_ADMIN_EMAIL "$BOOTSTRAP_ADMIN_EMAIL"
+  write_env SMTP_FROM             "$SMTP_FROM"
 
   if [[ "$TLS_MODE" == "traefik" ]]; then
     write_env TRAEFIK_ENABLE             "true"
@@ -139,9 +157,6 @@ if [[ ! -f .env ]]; then
     write_env TRAEFIK_DOMAIN_WEB         "$TRAEFIK_DOMAIN_WEB"
     write_env TRAEFIK_DOMAIN_WEBPLANER   "$TRAEFIK_DOMAIN_WEBPLANER"
     write_env TRAEFIK_LE_EMAIL           "$TRAEFIK_LE_EMAIL"
-    # Public-URLs aus den Domains ableiten
-    write_env PUBLIC_BASE_URL            "https://${TRAEFIK_DOMAIN_WEB}"
-    write_env OIDC_ISSUER                "https://${TRAEFIK_DOMAIN_API}"
     write_env WEBPLANER_PUBLIC_URL       "https://${TRAEFIK_DOMAIN_WEBPLANER}"
   fi
 
