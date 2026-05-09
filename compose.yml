@@ -108,6 +108,7 @@ services:
       - traefik.http.routers.api.rule=Host(`${TRAEFIK_DOMAIN_API:-api.localhost}`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=le
+      - traefik.http.routers.api.middlewares=secure-headers@file
       - traefik.http.services.api.loadbalancer.server.port=8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
@@ -135,6 +136,7 @@ services:
       - traefik.http.routers.web.rule=Host(`${TRAEFIK_DOMAIN_WEB:-app.localhost}`)
       - traefik.http.routers.web.entrypoints=websecure
       - traefik.http.routers.web.tls.certresolver=le
+      - traefik.http.routers.web.middlewares=secure-headers@file
       - traefik.http.services.web.loadbalancer.server.port=3000
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
@@ -173,6 +175,7 @@ services:
       - traefik.http.routers.webplaner.rule=Host(`${TRAEFIK_DOMAIN_WEBPLANER:-www.localhost}`)
       - traefik.http.routers.webplaner.entrypoints=websecure
       - traefik.http.routers.webplaner.tls.certresolver=le
+      - traefik.http.routers.webplaner.middlewares=secure-headers@file
       - traefik.http.services.webplaner.loadbalancer.server.port=3001
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
@@ -198,6 +201,9 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # Pretix P1.3: file-Provider fuer Security-Headers-Middleware
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
@@ -212,6 +218,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${DATA_ROOT:-./data}/traefik/letsencrypt:/letsencrypt
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
     networks: [frontend]
 
 networks:
