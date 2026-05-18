@@ -251,6 +251,41 @@ fi
 echo "==> Status"
 "${COMPOSE[@]}" ps
 
+# ─────────────────────────────────────────────────────────────────────
+# 4) Optional: taegliches DB-Backup als Cron-Job einrichten
+# ─────────────────────────────────────────────────────────────────────
+# Nur unter Linux + als root + wenn das Backup-Script existiert.
+# Schreibt einen idempotenten Eintrag in /etc/crontab (DSM Aufgaben-
+# Planer nutzt dasselbe Cron-System; manueller GUI-Eintrag ist parallel
+# moeglich aber nicht noetig).
+install_db_backup_cron() {
+  [[ "$(uname -s)" == "Linux" ]] || { echo "==> Kein Linux — Backup-Cron-Setup uebersprungen."; return 0; }
+  if [[ ${EUID:-1} -ne 0 ]]; then
+    echo "==> Nicht als root gestartet — Backup-Cron nicht automatisch eingerichtet."
+    echo "    Manuelle Schritte: docs/operations/SYNOLOGY_BACKUP.md"
+    return 0
+  fi
+  local BACKUP_SCRIPT="${ROOT_DIR}/scripts/db-backup-synology.sh"
+  if [[ ! -x "${BACKUP_SCRIPT}" ]]; then
+    chmod +x "${BACKUP_SCRIPT}" 2>/dev/null || true
+    [[ -x "${BACKUP_SCRIPT}" ]] || { echo "==> ${BACKUP_SCRIPT} nicht ausfuehrbar — Backup-Cron uebersprungen."; return 0; }
+  fi
+  if [[ ! -f /etc/crontab ]]; then
+    echo "==> /etc/crontab existiert nicht — Backup-Cron uebersprungen."
+    return 0
+  fi
+  if grep -qF "${BACKUP_SCRIPT}" /etc/crontab; then
+    echo "==> Backup-Cron-Job existiert bereits in /etc/crontab."
+    return 0
+  fi
+  local MARKER="# SpielPlaner DB-Backup (von install.sh angelegt $(date +%F))"
+  # 04:00 nachts — nach typischer Theater-Operations-Zeit
+  printf '\n%s\n0\t4\t*\t*\t*\troot\t/bin/bash %s\n' "${MARKER}" "${BACKUP_SCRIPT}" >> /etc/crontab
+  echo "==> Backup-Cron-Job eingerichtet (taeglich 04:00 → /etc/crontab)."
+  echo "    Backup-Verzeichnis: \${BACKUP_ROOT:-/volume1/spielplaner_dev/backups/db}"
+}
+install_db_backup_cron
+
 cat <<EOF
 
 ========================================================
