@@ -100,7 +100,11 @@ services:
       - ${DATA_ROOT:-./data}/logs/api:/app/logs
       - ./db/seeds:/srv/seeds:ro
     ports:
-      - "8000:8000"
+      # INST-1: Host-Port konfigurierbar (Default unverändert 8000). Bei
+      # Port-Konflikt (z.B. anderer Dienst auf 8000) API_HOST_PORT in .env setzen.
+      # HOST_BIND_IP: im traefik-Modus 127.0.0.1 — Docker umgeht die Host-
+      # Firewall (ufw), sonst waeren die Ports unverschluesselt oeffentlich.
+      - "${HOST_BIND_IP:-0.0.0.0}:${API_HOST_PORT:-8000}:8000"
     # Traefik-Labels werden nur aktiv, wenn Profile `traefik` laeuft.
     # TRAEFIK_DOMAIN_API z.B. "api.spielplaner.theater.de"
     labels:
@@ -110,6 +114,9 @@ services:
       - traefik.http.routers.api.tls.certresolver=le
       - traefik.http.routers.api.middlewares=secure-headers@file
       - traefik.http.services.api.loadbalancer.server.port=8000
+      # api haengt in backend+frontend, Traefik nur in frontend. Ohne Vorgabe
+      # waehlt Traefik mitunter die backend-IP → 504 Gateway Timeout.
+      - traefik.docker.network=spielplaner_frontend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
       interval: 15s
@@ -130,7 +137,9 @@ services:
       ORIGIN: ${PUBLIC_BASE_URL}
       API_INTERNAL_URL: ${API_BASE_URL:-http://api:8000}
     ports:
-      - "3000:3000"
+      # INST-1: häufigster Konflikt — Port 3000 ist auf der Insel-NAS von der
+      # Gastro-App belegt. Dann WEB_HOST_PORT in .env umsetzen.
+      - "${HOST_BIND_IP:-0.0.0.0}:${WEB_HOST_PORT:-3000}:3000"
     labels:
       - traefik.enable=${TRAEFIK_ENABLE:-false}
       - traefik.http.routers.web.rule=Host(`${TRAEFIK_DOMAIN_WEB:-app.localhost}`)
@@ -169,7 +178,8 @@ services:
       PUBLIC_DEV_BANNER: ${WEBPLANER_DEV_BANNER:-0}
       ORIGIN: ${WEBPLANER_PUBLIC_URL:-http://localhost:3001}
     ports:
-      - "3001:3001"
+      # INST-1: WebPlaner-Host-Port konfigurierbar (Default 3001).
+      - "${HOST_BIND_IP:-0.0.0.0}:${WEBPLANER_HOST_PORT:-3001}:3001"
     labels:
       - traefik.enable=${TRAEFIK_ENABLE:-false}
       - traefik.http.routers.webplaner.rule=Host(`${TRAEFIK_DOMAIN_WEBPLANER:-www.localhost}`)
@@ -178,7 +188,10 @@ services:
       - traefik.http.routers.webplaner.middlewares=secure-headers@file
       - traefik.http.services.webplaner.loadbalancer.server.port=3001
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
+      # 127.0.0.1 statt localhost: im Alpine-Image loest localhost auf ::1 auf,
+      # der Node-Server lauscht nur IPv4 → Healthcheck blieb dauerhaft rot und
+      # Traefik routete den Container nie.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -196,7 +209,9 @@ services:
   # ─────────────────────────────────────────────────────────────────────
   traefik:
     profiles: ["traefik"]
-    image: traefik:v3.1
+    # v3.6+: aeltere Traefik-Versionen sprechen eine Docker-API-Version, die
+    # Docker Engine 29 ablehnt (Docker-Provider findet dann keine Container).
+    image: traefik:v3.6
     restart: unless-stopped
     command:
       - --providers.docker=true
@@ -213,8 +228,10 @@ services:
       - --certificatesresolvers.le.acme.tlschallenge=true
       - --log.level=INFO
     ports:
-      - "80:80"
-      - "443:443"
+      # INST-1: Traefik-Host-Ports konfigurierbar (Default 80/443). Relevant,
+      # wenn die NAS-eigene Reverse-Proxy 80/443 bereits belegt.
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${DATA_ROOT:-./data}/traefik/letsencrypt:/letsencrypt

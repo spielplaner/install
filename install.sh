@@ -60,6 +60,20 @@ gen_secret() {
   fi
 }
 
+detect_lan_ip() {
+  # INST-1: erste LAN-IPv4 raten, damit der User die NAS-IP nicht selbst
+  # tippen muss. Linux/Synology: `hostname -I`; macOS: `ipconfig getifaddr en0`.
+  # Liefert leeren String, wenn nichts gefunden wird (Aufrufer faellt zurueck).
+  local ip=""
+  if hostname -I >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  if [[ -z "$ip" ]] && command -v ipconfig >/dev/null 2>&1; then
+    ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+  fi
+  echo "$ip"
+}
+
 write_env() {
   # write_env KEY VALUE   (idempotent: ersetzt bestehende Zeile, sonst anhaengen)
   local key="$1" value="$2"
@@ -99,6 +113,26 @@ if [[ ! -f .env ]]; then
   prompt        DATA_ROOT          "Wo sollen Daten liegen (Hostpfad)" "./data"
   prompt        PUBLIC_TENANT_SLUG "Tenant-Slug fuer dieses Theater"   "feinfein"
   prompt_choice TLS_MODE           "TLS-Terminierung"                  "extern" "extern|traefik"
+  prompt_choice ENABLE_WEBPLANER   "WebPlaner (oeff. Theater-Website) mit installieren" "0" "0|1"
+
+  # --- INST-1: Host-Ports (nur auf Wunsch — Default-Pfad bleibt schlank) ---
+  # Defaults entsprechen dem bisherigen Verhalten; werden nur abgefragt, wenn
+  # der User Konflikte aufloesen muss (z.B. Port 3000 von der Gastro-App belegt).
+  API_HOST_PORT=8000
+  WEB_HOST_PORT=3000
+  WEBPLANER_HOST_PORT=3001
+  TRAEFIK_HTTP_PORT=80
+  TRAEFIK_HTTPS_PORT=443
+  prompt_choice ADVANCED_PORTS "Host-Ports anpassen (nur bei Port-Konflikten noetig)" "n" "n|y"
+  if [[ "$ADVANCED_PORTS" == "y" ]]; then
+    prompt API_HOST_PORT "Host-Port API"      "8000"
+    prompt WEB_HOST_PORT "Host-Port Suite-UI" "3000"
+    [[ "$ENABLE_WEBPLANER" == "1" ]] && prompt WEBPLANER_HOST_PORT "Host-Port WebPlaner" "3001"
+    if [[ "$TLS_MODE" == "traefik" ]]; then
+      prompt TRAEFIK_HTTP_PORT  "Host-Port Traefik HTTP"  "80"
+      prompt TRAEFIK_HTTPS_PORT "Host-Port Traefik HTTPS" "443"
+    fi
+  fi
 
   TRAEFIK_DOMAIN_API=""
   TRAEFIK_DOMAIN_WEB=""
@@ -114,11 +148,17 @@ if [[ ! -f .env ]]; then
     PUBLIC_BASE_URL="https://${TRAEFIK_DOMAIN_WEB}"
     OIDC_ISSUER="https://${TRAEFIK_DOMAIN_WEB}"
   else
-    prompt PUBLIC_BASE_URL "Oeffentliche URL der Suite (HTTPS, ohne abschliessenden /)" "https://spielplaner.example"
-    prompt OIDC_ISSUER     "OIDC-Issuer-URL (meist identisch mit PUBLIC_BASE_URL)"      "$PUBLIC_BASE_URL"
+    # INST-1: LAN-IP als Default-Vorschlag (http://<ip>:<web-port>), damit der
+    # User die NAS-IP nicht selbst tippen muss. Fallback: generischer Default.
+    LAN_IP="$(detect_lan_ip)"
+    if [[ -n "$LAN_IP" ]]; then
+      PUBLIC_BASE_URL_DEFAULT="http://${LAN_IP}:${WEB_HOST_PORT}"
+    else
+      PUBLIC_BASE_URL_DEFAULT="https://spielplaner.example"
+    fi
+    prompt PUBLIC_BASE_URL "Oeffentliche URL der Suite (ohne abschliessenden /)"   "$PUBLIC_BASE_URL_DEFAULT"
+    prompt OIDC_ISSUER     "OIDC-Issuer-URL (meist identisch mit PUBLIC_BASE_URL)" "$PUBLIC_BASE_URL"
   fi
-
-  prompt_choice ENABLE_WEBPLANER "WebPlaner (oeff. Theater-Website) mit installieren" "0" "0|1"
 
   # --- Identitaets-/Mail-Prompts ---
   # Diese Werte werden vom Setup-Wizard und vom Mail-Versand genutzt.
@@ -152,6 +192,11 @@ if [[ ! -f .env ]]; then
   write_env BOOTSTRAP_ADMIN_EMAIL "$BOOTSTRAP_ADMIN_EMAIL"
   write_env SMTP_FROM             "$SMTP_FROM"
 
+  # INST-1: Host-Ports (Default oder via Erweitert-Toggle angepasst).
+  write_env API_HOST_PORT         "$API_HOST_PORT"
+  write_env WEB_HOST_PORT         "$WEB_HOST_PORT"
+  write_env WEBPLANER_HOST_PORT   "$WEBPLANER_HOST_PORT"
+
   if [[ "$TLS_MODE" == "traefik" ]]; then
     write_env TRAEFIK_ENABLE             "true"
     write_env TRAEFIK_DOMAIN_API         "$TRAEFIK_DOMAIN_API"
@@ -159,6 +204,10 @@ if [[ ! -f .env ]]; then
     write_env TRAEFIK_DOMAIN_WEBPLANER   "$TRAEFIK_DOMAIN_WEBPLANER"
     write_env TRAEFIK_LE_EMAIL           "$TRAEFIK_LE_EMAIL"
     write_env WEBPLANER_PUBLIC_URL       "https://${TRAEFIK_DOMAIN_WEBPLANER}"
+    write_env TRAEFIK_HTTP_PORT          "$TRAEFIK_HTTP_PORT"
+    write_env TRAEFIK_HTTPS_PORT         "$TRAEFIK_HTTPS_PORT"
+    # Traefik ist dann der einzige Weg nach aussen; API/Web/WebPlaner nur lokal.
+    write_env HOST_BIND_IP               "127.0.0.1"
   fi
 
   echo "  -> .env angelegt (chmod 600)."
@@ -291,12 +340,12 @@ cat <<EOF
 ========================================================
   SpielPlaner ist gestartet.
 
-  Suite-UI :  http://localhost:3000
-  API-Docs :  http://localhost:8000/docs
+  Suite-UI :  http://localhost:${WEB_HOST_PORT:-3000}
+  API-Docs :  http://localhost:${API_HOST_PORT:-8000}/docs
 EOF
 
 if [[ "${ENABLE_WEBPLANER:-0}" == "1" ]]; then
-  echo "  WebPlaner:  http://localhost:3001"
+  echo "  WebPlaner:  http://localhost:${WEBPLANER_HOST_PORT:-3001}"
 fi
 
 if [[ "${TLS_MODE:-extern}" == "traefik" ]]; then
@@ -306,7 +355,7 @@ fi
 cat <<EOF
 
   Naechster Schritt:
-  -> Browser oeffnen, http://localhost:3000/setup aufrufen.
+  -> Browser oeffnen, http://localhost:${WEB_HOST_PORT:-3000}/setup aufrufen.
      Der Setup-Wizard fragt Theatername, Admin-Account,
      Firmendaten und (optional) SMTP ab.
 ========================================================

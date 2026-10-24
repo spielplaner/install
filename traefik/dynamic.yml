@@ -1,0 +1,48 @@
+# © Frank-Christian Struve 2026 · Version 26 R3
+#
+# Traefik-Dynamic-Config (File-Provider). Wird vom Traefik-Container
+# beim Start gemounted (siehe compose.yml -> traefik.command +
+# traefik.volumes).
+#
+# Definiert Security-Headers-Middleware fuer Public-Deployment
+# (Pretix P1.3). Im Profil "traefik" werden API/Web/WebPlaner mit
+# der Middleware-Chain "secure-headers" gerouted.
+#
+# Backend (FastAPI) + SvelteKit-SSR setzen die Headers ZUSAETZLICH
+# selbst (Defense-in-Depth). Hier ist nur die Reverse-Proxy-Schicht.
+
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        # HSTS — 1 Jahr, includeSubDomains, preload
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        # Anti-Clickjacking
+        frameDeny: true
+        # Anti-MIME-Sniffing
+        contentTypeNosniff: true
+        # Browser-XSS-Filter (legacy aber harmlos)
+        browserXssFilter: true
+        # Referrer
+        referrerPolicy: "strict-origin-when-cross-origin"
+        # Permissions-Policy: PII-relevante APIs explizit auf NULL
+        permissionsPolicy: "camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=()"
+        # CSP — Report-Only, bis Allowlist verifiziert (Tiptap + SvelteKit)
+        contentSecurityPolicyReportOnly: >-
+          default-src 'self';
+          script-src 'self' 'unsafe-inline';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob: https://feinfein.de;
+          font-src 'self' data:;
+          connect-src 'self';
+          frame-ancestors 'none';
+          form-action 'self';
+          base-uri 'self';
+          object-src 'none'
+        # Custom-Header: Server-Fingerprint reduzieren (kein Apache/nginx-Banner)
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
